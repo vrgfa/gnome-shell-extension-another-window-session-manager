@@ -6,6 +6,41 @@ import GLib from 'gi://GLib';
 import * as Log from './log.js';
 
 
+// pid -> {startTime, processInfoArray}
+//
+// Windows are saved on every title / position / size change, and some apps
+// (terminals, chat apps) change their title several times a second. Spawning
+// `ps` from gnome-shell each time is expensive: the fork has to copy and then
+// tear down the page tables of the whole (often >1 GB) shell process. The start
+// time and command line of a process never change, so query each process once
+// and reuse the result while the process (pid + start time) is the same.
+const _processInfoCache = new Map();
+const MAX_CACHED_PROCESSES = 256;
+
+// Field 22 of /proc/<pid>/stat, in clock ticks since boot. Together with the
+// pid it identifies a process, even if the pid gets reused later.
+function _getProcessStartTime(pid) {
+    try {
+        const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/stat`);
+        if (!ok) return null;
+        const stat = new TextDecoder().decode(contents);
+        // The process name (field 2) is in parentheses and may contain spaces
+        const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+        // fields[0] is field 3 (state)
+        return fields[19] ?? null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _pruneProcessInfoCache() {
+    if (_processInfoCache.size <= MAX_CACHED_PROCESSES) return;
+    for (const [pid, cached] of _processInfoCache) {
+        if (_getProcessStartTime(pid) !== cached.startTime)
+            _processInfoCache.delete(pid);
+    }
+}
+
 export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
     try {
         const pidSet = new Set();
@@ -15,7 +50,7 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
                 if (ignoreWindowsCb && ignoreWindowsCb(metaWindow)) {
                     continue;
                 }
-    
+
                 const pid = metaWindow.get_pid();
                 // pid is `0` if not known
                 // Note that pass `0` or negative value to `ps -p` will get `error: process ID out of range`
@@ -24,7 +59,22 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
         }
 
         if (!pidSet.size) return;
-    
+
+        const processInfoMap = new Map();
+        const startTimes = new Map();
+        for (const pid of pidSet) {
+            const startTime = _getProcessStartTime(pid);
+            const cached = _processInfoCache.get(pid);
+            if (startTime !== null && cached && cached.startTime === startTime) {
+                processInfoMap.set(pid, cached.processInfoArray);
+                pidSet.delete(pid);
+            } else {
+                startTimes.set(pid, startTime);
+            }
+        }
+
+        if (!pidSet.size) return processInfoMap;
+
         // Separated with comma
         const pids = Array.from(pidSet).join(',');
         // TODO get_sandboxed_app_id() Gets an unique id for a sandboxed app (currently flatpaks and snaps are supported).
@@ -38,16 +88,20 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
                 );
                 proc.communicate_utf8_async(null, null, (proc, res) => {
                     try {
-                        const processInfoMap = new Map();
                         let [, stdout, stderr] = proc.communicate_utf8_finish(res);
                         let status = proc.get_exit_status();
                         if (status === 0 && stdout) {
                             const lines = stdout.trim();
                             for (const line of lines.split('\n')) {
                                 const processInfoArray = line.split(' ').filter(a => a);
-                                const pid = processInfoArray.slice(7, 8).join();
-                                processInfoMap.set(Number(pid), processInfoArray);
+                                const pid = Number(processInfoArray.slice(7, 8).join());
+                                processInfoMap.set(pid, processInfoArray);
+
+                                const startTime = startTimes.get(pid);
+                                if (startTime !== null && startTime !== undefined)
+                                    _processInfoCache.set(pid, {startTime, processInfoArray});
                             }
+                            _pruneProcessInfoCache();
                             return resolve(processInfoMap);
                         }
     
