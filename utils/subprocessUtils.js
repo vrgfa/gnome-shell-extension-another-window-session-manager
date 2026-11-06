@@ -95,18 +95,21 @@ async function _readProcessInfo(pid, statText, sys) {
     const uptime = Number(uptimeText?.split(' ')[0]);
     const startSeconds = startTicks / CLK_TCK;
     const elapsed = uptime - startSeconds;
-    const cpu = elapsed > 0 ? Math.min(Math.floor(cpuTicks / CLK_TCK * 1000 / elapsed) / 10, 99.9) : 0;
-    const mem = Math.floor(rssPages * PAGE_KB * 1000 / sys.memTotalKb) / 10;
+    // ps prints tenths of a percent as "12.3", and whole percents from 100 on
+    const fmt = tenths => tenths >= 1000 ? String(Math.floor(tenths / 10)) : (tenths / 10).toFixed(1);
+    const cpu = fmt(elapsed > 0 ? Math.floor(cpuTicks / CLK_TCK * 1000 / elapsed) : 0);
+    const mem = fmt(Math.floor(rssPages * PAGE_KB * 1000 / sys.memTotalKb));
 
     const started = GLib.DateTime.new_from_unix_local(sys.btime + Math.floor(startSeconds));
-    // like `ps -o lstart`: "Fri Nov  6 10:00:00 2026"
-    const lstart = started.format('%a %b %e %H:%M:%S %Y').split(' ').filter(a => a);
+    // like `ps -o lstart` ("Fri Nov  6 10:00:00 2026" split on spaces); not %e: GLib pads it with U+2007
+    const lstart = [started.format('%a'), started.format('%b'), String(started.get_day_of_month()),
+        started.format('%H:%M:%S'), String(started.get_year())];
 
     // `ps -o command` is the command line, or [comm] for a process without one
     const command = cmdline.replace(/\0+$/, '').split('\0').join(' ');
     const commandArray = (command || `[${stat.comm}]`).split(' ').filter(a => a);
 
-    return [...lstart, cpu.toFixed(1), mem.toFixed(1), String(pid), ...commandArray];
+    return [...lstart, cpu, mem, String(pid), ...commandArray];
 }
 
 export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {

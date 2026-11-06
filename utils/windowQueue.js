@@ -44,7 +44,7 @@ export class WindowQueue {
         const item = {window, time: GLib.get_monotonic_time(), unmanagingId: 0};
         try {
             item.unmanagingId = window.connect('unmanaging', () => {
-                item.unmanagingId = 0;
+                this._release(item);
                 const i = this._items.indexOf(item);
                 if (i >= 0) this._items.splice(i, 1);
             });
