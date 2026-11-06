@@ -43,6 +43,7 @@ export default class AnotherWindowSessionManagerExtension extends Extension {
         WindowTilingSupport.initialize();
     
         _openWindowsTracker = new OpenWindowsTracker.OpenWindowsTracker();
+        this._tracker = _openWindowsTracker;   // for tests/
         _autoclose = new Autoclose.Autoclose();
     
         _windowPickerServiceProvider = new WindowPicker.WindowPickerServiceProvider();
@@ -84,6 +85,7 @@ export default class AnotherWindowSessionManagerExtension extends Extension {
         if (_openWindowsTracker) {
             _openWindowsTracker.destroy();
             _openWindowsTracker = null;
+            this._tracker = null;
         }
     
         WindowTilingSupport.destroy();

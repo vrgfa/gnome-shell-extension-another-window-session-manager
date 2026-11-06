@@ -13,6 +13,7 @@ import * as SubprocessUtils from './utils/subprocessUtils.js';
 import * as DateUtils from './utils/dateUtils.js';
 import * as Function from './utils/function.js';
 import * as MetaWindowUtils from './utils/metaWindowUtils.js';
+import {flushPendingWindows} from './utils/windowQueue.js';
 
 import * as Constants from './constants.js';
 
@@ -505,9 +506,15 @@ export const CloseSession = class {
         return windows;
     }
 
+    // The windows mapping is filled by an idle queue: always make it current before reading it
+    _readWindowsMapping() {
+        flushPendingWindows();
+        const json = this._settings.get_string('windows-mapping');
+        return json === '{}' ? new Map() : new Map(JSON.parse(json));
+    }
+
     _sortWindowsOnX11(app) {
-        const savedWindowsMappingJsonStr = this._settings.get_string('windows-mapping');
-        const savedWindowsMapping = savedWindowsMappingJsonStr === '{}' ? new Map() : new Map(JSON.parse(savedWindowsMappingJsonStr));
+        const savedWindowsMapping = this._readWindowsMapping();
 
         const app_info = app.get_app_info();
         const key = app_info ? app_info.get_filename() : app.get_name();
