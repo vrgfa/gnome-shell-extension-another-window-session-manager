@@ -1,5 +1,5 @@
-import GLib from 'gi://GLib';
 'use strict';
+import GLib from 'gi://GLib';
 
 import GObject from 'gi://GObject';
 
