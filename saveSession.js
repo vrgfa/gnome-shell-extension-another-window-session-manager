@@ -63,7 +63,9 @@ export const SaveSession = class {
                 session_name: FileUtils.current_session_summary_name
             }, FileUtils.current_session_path, cancellable);
         } catch(error) {
-            this._log.error(error);
+            // A newer summary save cancels the running one: not an error
+            if (!error?.cause?.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                this._log.error(error);
         }
     }
 
@@ -422,13 +424,15 @@ export const SaveSession = class {
     // so an older write can never finish after (and overwrite) a newer one.
     _saveSessionConfigAsync(sessionConfig, baseDir = null, cancellable = null) {
         const path = GLib.build_filenamev([FileUtils.get_sessions_path(baseDir), sessionConfig.session_name]);
-        const previous = this._writeChains.get(path);
+        const chains = this._writeChains;   // null after destroy(): the save still lands, unchained
+        const previous = chains?.get(path);
         const write = previous
             ? previous.catch(() => {}).then(() => this._writeSessionConfigAsync(sessionConfig, baseDir, cancellable))
             : this._writeSessionConfigAsync(sessionConfig, baseDir, cancellable);
-        this._writeChains.set(path, write);
+        if (!chains) return write;
+        chains.set(path, write);
         const cleanUp = () => {
-            if (this._writeChains?.get(path) === write) this._writeChains.delete(path);
+            if (chains.get(path) === write) chains.delete(path);
         };
         write.then(cleanUp, cleanUp);
         return write;

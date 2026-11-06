@@ -24,7 +24,8 @@ export function flushPendingWindows() {
 }
 
 export class WindowQueue {
-    constructor(handler, commit, budgetUs = DEFAULT_BUDGET_US) {
+    // register: true makes this the queue flushPendingWindows() drains (the tracker's only)
+    constructor(handler, commit, budgetUs = DEFAULT_BUDGET_US, {register = false} = {}) {
         this._handler = handler;
         this._commit = commit;
         this._budgetUs = budgetUs;
@@ -32,7 +33,8 @@ export class WindowQueue {
         this._idleId = 0;
         this._destroyed = false;
         this.turns = 0;         // idle turns used so far (for tests)
-        _active = this;
+        this._registered = register;
+        if (register) _active = this;
     }
 
     get size() {
@@ -118,6 +120,6 @@ export class WindowQueue {
             this._idleId = 0;
         }
         this.clear();
-        if (_active === this) _active = null;
+        if (this._registered && _active === this) _active = null;
     }
 }

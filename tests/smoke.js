@@ -50,6 +50,17 @@ export default async function (t) {
         q.flush();
         t.check(q.size === 0 && seen.length === 9, 'flush() drains synchronously');
         q.destroy();
+        // the test's own queue neither registers nor unregisters the tracker's one
+        if (tracker) {
+            const wq = tracker._windowQueue;
+            const origHandler = wq._handler;
+            let handled = 0;
+            wq._handler = () => handled++;
+            wq.push(fakeWindow());
+            Q.flushPendingWindows();
+            wq._handler = origHandler;
+            t.check(wq.size === 0 && handled === 1, 'flushPendingWindows() still reaches the tracker queue after a test queue was destroyed');
+        }
     }
 
     // 1b. /proc process info against `ps` for a long-running process (the nested shell itself)
@@ -63,6 +74,33 @@ export default async function (t) {
     t.check(!!info && info[7] === psArr[7] && info.slice(8).join(' ') === psArr.slice(8).join(' '), 'pid and command same as ps');
     t.check(!!info && Math.abs(parseFloat(info[5]) - parseFloat(psArr[5])) < 5 && Math.abs(parseFloat(info[6]) - parseFloat(psArr[6])) < 0.5,
         `cpu / mem near ps (${info?.[5]}/${info?.[6]} vs ${psArr[5]}/${psArr[6]})`);
+
+    // 1c. a vanished pid: no entry, no throw
+    const gone = await SubprocessUtils.getProcessInfo([{get_windows: () => [{get_pid: () => 4194000}]}]);
+    t.check(gone instanceof Map && gone.size === 0, 'getProcessInfo on a vanished pid: no entry, no throw');
+
+    // 1d. write chain: a rejected write does not stop the next one, order kept; works after destroy() too
+    const SaveSession = await import(`file://${ext.path}/saveSession.js`).catch(() => null);
+    if (SaveSession?.SaveSession) {
+        const ss = new SaveSession.SaveSession();
+        const log = [];
+        ss._writeSessionConfigAsync = (cfg) => new Promise((resolve, reject) => {
+            log.push(`start ${cfg.n}`);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, cfg.n === 1 ? 150 : 10, () => {
+                log.push(`end ${cfg.n}`);
+                cfg.n === 1 ? reject(new Error('write 1 failed')) : resolve(true);
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+        const w1 = ss._saveSessionConfigAsync({session_name: 'chain.json', n: 1}, '/tmp/awsm-chain').catch(e => e.message);
+        const w2 = ss._saveSessionConfigAsync({session_name: 'chain.json', n: 2}, '/tmp/awsm-chain');
+        const [r1, r2] = await Promise.all([w1, w2]);
+        t.check(r1 === 'write 1 failed' && r2 === true && log.join() === 'start 1,end 1,start 2,end 2',
+            `write chain: write 1 rejects, write 2 still runs after it (${log})`);
+        ss.destroy();
+        t.check(await ss._saveSessionConfigAsync({session_name: 'chain.json', n: 3}, '/tmp/awsm-chain') === true,
+            'save after destroy() still runs (unchained)');
+    }
 
     // 2. real windows: open 3, check the hook cost and the drain
     const work = GLib.build_filenamev([GLib.get_tmp_dir(), `awsm-test-${GLib.get_monotonic_time()}`]);

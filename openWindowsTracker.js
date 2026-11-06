@@ -123,7 +123,7 @@ export const OpenWindowsTracker = class {
         // the session-saving signals are handled by an idle drain (utils/windowQueue.js).
         this._windowQueue = new WindowQueue(
             (window, batch) => this._processQueuedWindow(window, batch),
-            batch => this._commitWindowsMapping(batch));
+            batch => this._commitWindowsMapping(batch), undefined, {register: true});
         const windowCreatedId = this._display.connect('window-created', (display, window, userData) => {
             // Restoring needs the state right now (startup: installed-changed moves the windows)
             this._restoreWindowStateSafe(window);

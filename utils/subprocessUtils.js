@@ -21,7 +21,9 @@ import * as Log from './log.js';
 const _processInfoCache = new Map();
 const MAX_CACHED_PROCESSES = 256;
 const CLK_TCK = 100;        // USER_HZ, fixed at 100 on Linux
-const PAGE_KB = 4;          // kB per page, for the rss field of /proc/<pid>/stat
+// kB per page, for the rss field of /proc/<pid>/stat. GJS has no sysconf(); 4 kB on x86 and
+// most arm64 distros (only %mem would be off on a 16 / 64 kB kernel)
+const PAGE_KB = 4;
 
 let _systemInfo = null;     // {btime, memTotalKb}, constant while the system runs
 
@@ -61,8 +63,15 @@ async function _getProcessStartTime(pid) {
     return stat?.fields[19] ?? null;
 }
 
+let _lastPrune = 0;
+const PRUNE_INTERVAL_US = 60 * 1000000;
+
+// Only called after a pid was newly cached, at most once a minute
 function _pruneProcessInfoCache() {
     if (_processInfoCache.size <= MAX_CACHED_PROCESSES) return;
+    const now = GLib.get_monotonic_time();
+    if (now - _lastPrune < PRUNE_INTERVAL_US) return;
+    _lastPrune = now;
     for (const [pid, cached] of [..._processInfoCache]) {
         _getProcessStartTime(pid).then(startTime => {
             if (startTime !== cached.startTime && _processInfoCache.get(pid) === cached)
@@ -107,10 +116,41 @@ async function _readProcessInfo(pid, statText, sys) {
 
     // `ps -o command` is the command line, or [comm] for a process without one
     const command = cmdline.replace(/\0+$/, '').split('\0').join(' ');
-    const commandArray = (command || `[${stat.comm}]`).split(' ').filter(a => a);
+    // ps shows a zombie as "[comm] <defunct>"
+    const commandArray = (command || `[${stat.comm}]${f[0] === 'Z' ? ' <defunct>' : ''}`).split(' ').filter(a => a);
 
     return [...lstart, cpu, mem, String(pid), ...commandArray];
 }
+
+// The former implementation, only used when /proc can't give the system info (btime / MemTotal):
+// the saved `cmd` must never be lost. Asynchronous (communicate_utf8_async), same array layout.
+function _getProcessInfoViaPs(pids) {
+    return new Promise(resolve => {
+        const map = new Map();
+        try {
+            const proc = Gio.Subprocess.new(
+                ['ps', '--no-headers', '-p', pids.join(','), '-o', 'lstart,%cpu,%mem,pid,command'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+            proc.communicate_utf8_async(null, null, (p, res) => {
+                try {
+                    const [, stdout] = p.communicate_utf8_finish(res);
+                    for (const line of (stdout ?? '').trim().split('\n')) {
+                        const arr = line.split(' ').filter(a => a);
+                        if (arr.length > 8) map.set(Number(arr[7]), arr);
+                    }
+                } catch (e) {
+                    Log.Log.getDefault().error(e);
+                }
+                resolve(map);
+            });
+        } catch (e) {
+            Log.Log.getDefault().error(e);
+            resolve(map);
+        }
+    });
+}
+
+let _sysInfoErrorLogged = false;
 
 export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
     try {
@@ -131,6 +171,9 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
         if (!pidSet.size) return;
 
         const processInfoMap = new Map();
+        const sys = await _getSystemInfo();
+        const missing = [];     // pids to look up with `ps` (only if /proc can't give the system info)
+        let newlyCached = false;
         await Promise.all([...pidSet].map(async pid => {
             const statText = await _readFileAsync(`/proc/${pid}/stat`);
             const startTime = _parseStat(statText)?.fields[19] ?? null;
@@ -139,14 +182,34 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
                 processInfoMap.set(pid, cached.processInfoArray);
                 return;
             }
+            if (!sys) {
+                if (startTime !== null) missing.push([pid, startTime]);
+                return;
+            }
 
-            const processInfoArray = await _readProcessInfo(pid, statText, await _getSystemInfo());
+            const processInfoArray = await _readProcessInfo(pid, statText, sys);
             if (!processInfoArray) return;   // the process is gone: no info, as `ps` printed nothing
             processInfoMap.set(pid, processInfoArray);
-            if (startTime !== null)
+            if (startTime !== null) {
                 _processInfoCache.set(pid, {startTime, processInfoArray});
+                newlyCached = true;
+            }
         }));
-        _pruneProcessInfoCache();
+        if (missing.length) {
+            if (!_sysInfoErrorLogged) {
+                _sysInfoErrorLogged = true;
+                Log.Log.getDefault().error(new Error('Cannot read btime / MemTotal from /proc, falling back to `ps` for process info'));
+            }
+            const viaPs = await _getProcessInfoViaPs(missing.map(([pid]) => pid));
+            for (const [pid, startTime] of missing) {
+                const processInfoArray = viaPs.get(pid);
+                if (!processInfoArray) continue;
+                processInfoMap.set(pid, processInfoArray);
+                _processInfoCache.set(pid, {startTime, processInfoArray});
+                newlyCached = true;
+            }
+        }
+        if (newlyCached) _pruneProcessInfoCache();
         return processInfoMap;
     } catch (e) {
         Log.Log.getDefault().error(e);

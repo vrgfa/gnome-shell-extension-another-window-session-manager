@@ -506,11 +506,15 @@ export const CloseSession = class {
         return windows;
     }
 
-    _sortWindowsOnX11(app) {
-        // The windows mapping is filled by an idle queue: make it current before reading it
+    // The windows mapping is filled by an idle queue: always make it current before reading it
+    _readWindowsMapping() {
         flushPendingWindows();
-        const savedWindowsMappingJsonStr = this._settings.get_string('windows-mapping');
-        const savedWindowsMapping = savedWindowsMappingJsonStr === '{}' ? new Map() : new Map(JSON.parse(savedWindowsMappingJsonStr));
+        const json = this._settings.get_string('windows-mapping');
+        return json === '{}' ? new Map() : new Map(JSON.parse(json));
+    }
+
+    _sortWindowsOnX11(app) {
+        const savedWindowsMapping = this._readWindowsMapping();
 
         const app_info = app.get_app_info();
         const key = app_info ? app_info.get_filename() : app.get_name();
