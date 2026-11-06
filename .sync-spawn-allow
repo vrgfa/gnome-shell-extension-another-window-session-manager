@@ -1,0 +1,1 @@
+saveSession.js: const result = proc.communicate_utf8(null, cancellable);
