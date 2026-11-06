@@ -119,7 +119,7 @@ export const WindowPickerServiceProvider = class WindowPickerServiceProvider {
   }
 };
 
-const MyInspector = GObject.registerClass({
+const MyInspector = GObject.registerClass({GTypeName: `AWSM_MyInspector_${GLib.uuid_string_random().replace(/-/g, '')}`, 
   Signals: {
     'WindowPickCancelled': {}
   }

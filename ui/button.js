@@ -1,3 +1,4 @@
+import GLib from 'gi://GLib';
 'use strict';
 
 import GObject from 'gi://GObject';
@@ -8,7 +9,7 @@ import * as IconFinder from '../utils/iconFinder.js';
 
 
 export const Button = GObject.registerClass(
-class Button extends GObject.Object {
+{GTypeName: `AWSM_Button_${GLib.uuid_string_random().replace(/-/g, '')}`}, class Button extends GObject.Object {
 
     _init(properties) {
         super._init();

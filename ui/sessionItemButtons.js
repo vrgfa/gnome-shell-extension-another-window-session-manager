@@ -27,7 +27,7 @@ import * as Autoclose from './autoclose.js';
 
 
 export const SessionItemButtons = GObject.registerClass(
-class SessionItemButtons extends GObject.Object {
+{GTypeName: `AWSM_SessionItemButtons_${GLib.uuid_string_random().replace(/-/g, '')}`}, class SessionItemButtons extends GObject.Object {
 
     _init(sessionItem) {
         super._init();

@@ -1,3 +1,4 @@
+import GLib from 'gi://GLib';
 'use strict';
 
 import Shell from 'gi://Shell';
@@ -202,7 +203,7 @@ export class WindowTilingSupport {
 
 }
 
-const WindowTilingSupportSignals = GObject.registerClass({
+const WindowTilingSupportSignals = GObject.registerClass({GTypeName: `AWSM_WindowTilingSupportSignals_${GLib.uuid_string_random().replace(/-/g, '')}`, 
     Signals: {
         'window-tiled': {
             param_types: [Meta.Window.$gtype, Meta.Window.$gtype],

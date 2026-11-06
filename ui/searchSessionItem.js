@@ -1,3 +1,4 @@
+import GLib from 'gi://GLib';
 'use strict';
 
 import GObject from 'gi://GObject';
@@ -10,7 +11,7 @@ import * as Tooltip from '../utils/tooltip.js';
 
 
 export const SearchSessionItem = GObject.registerClass(
-    class SearchSessionItem extends PopupMenu.PopupBaseMenuItem {
+    {GTypeName: `AWSM_SearchSessionItem_${GLib.uuid_string_random().replace(/-/g, '')}`}, class SearchSessionItem extends PopupMenu.PopupBaseMenuItem {
 
         _init() {
             super._init({

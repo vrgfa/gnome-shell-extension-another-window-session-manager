@@ -1,3 +1,4 @@
+import GLib from 'gi://GLib';
 'use strict';
 
 import GObject from 'gi://GObject';
@@ -18,7 +19,7 @@ import {Button} from './button.js';
 
 
 export const PopupMenuButtonItems = GObject.registerClass(
-class PopupMenuButtonItems extends GObject.Object {
+{GTypeName: `AWSM_PopupMenuButtonItems_${GLib.uuid_string_random().replace(/-/g, '')}`}, class PopupMenuButtonItems extends GObject.Object {
 
     _init() {
         super._init();
@@ -38,7 +39,7 @@ class PopupMenuButtonItems extends GObject.Object {
 
 
 const PopupMenuButtonItem = GObject.registerClass(
-class PopupMenuButtonItem extends PopupMenu.PopupMenuItem {
+{GTypeName: `AWSM_PopupMenuButtonItem_${GLib.uuid_string_random().replace(/-/g, '')}`}, class PopupMenuButtonItem extends PopupMenu.PopupMenuItem {
 
     _init() {
         super._init('');
@@ -98,7 +99,7 @@ class PopupMenuButtonItem extends PopupMenu.PopupMenuItem {
 
 
 const PopupMenuButtonItemClose = GObject.registerClass(
-class PopupMenuButtonItemClose extends PopupMenuButtonItem {
+{GTypeName: `AWSM_PopupMenuButtonItemClose_${GLib.uuid_string_random().replace(/-/g, '')}`}, class PopupMenuButtonItemClose extends PopupMenuButtonItem {
 
     _init(iconSymbolic) {
         super._init();
@@ -220,7 +221,7 @@ class PopupMenuButtonItemClose extends PopupMenuButtonItem {
 
 
 const PopupMenuButtonItemSave = GObject.registerClass(
-class PopupMenuButtonItemSave extends PopupMenuButtonItem {
+{GTypeName: `AWSM_PopupMenuButtonItemSave_${GLib.uuid_string_random().replace(/-/g, '')}`}, class PopupMenuButtonItemSave extends PopupMenuButtonItem {
 
     _init(iconSymbolic) {
         super._init();

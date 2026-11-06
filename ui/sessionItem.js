@@ -1,3 +1,4 @@
+import GLib from 'gi://GLib';
 'use strict';
 
 import GObject from 'gi://GObject';
@@ -8,7 +9,7 @@ import * as SessionItemButtons from '../ui/sessionItemButtons.js';
 
 
 export const SessionItem = GObject.registerClass(
-class SessionItem extends PopupMenu.PopupMenuItem {
+{GTypeName: `AWSM_SessionItem_${GLib.uuid_string_random().replace(/-/g, '')}`}, class SessionItem extends PopupMenu.PopupMenuItem {
     
     _init(fileInfo, file, indicator) {
         // Initialize this component, so we can use this.label etc
@@ -48,7 +49,7 @@ class SessionItem extends PopupMenu.PopupMenuItem {
 });
 
 const EmptySessionItem = GObject.registerClass(
-class EmptySessionItem extends PopupMenu.PopupMenuItem {
+{GTypeName: `AWSM_EmptySessionItem_${GLib.uuid_string_random().replace(/-/g, '')}`}, class EmptySessionItem extends PopupMenu.PopupMenuItem {
     
     _init() {
         super._init("(Empty, please save open windows first)");
