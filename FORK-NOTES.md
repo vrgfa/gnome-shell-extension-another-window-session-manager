@@ -33,6 +33,6 @@ switching workspaces on active monitor" (GNOME ≤48 only) caused minutes of
 "too much recursion" in GNOME's workspace animation; that extension was
 disabled on 2026-10-28.
 
-## Branch `main` (2026-11-06)
+## Task branches (2026-11-06)
 
-`main` is now the installed branch and the one checked out in this clone (it replaced `installed`, same commit at the switch; `installed` is kept only as a historical name - don't build on it). The workbench's `worktree.sh` branches task worktrees from `main` and merges them back into it.
+`installed` stays the installed and checked-out branch (upstream-compatible naming; a short-lived `main` was merged back into it and removed). `git config workbench.mainBranch installed` (local) tells the workbench's `worktree.sh` to branch task worktrees from it and merge them back into it.
