@@ -27,7 +27,7 @@ import * as FileUtils from '../utils/fileUtils.js';
 let _requiredToRestorePrevious = false;
 
 export const AutostartServiceProvider = GObject.registerClass(
-    class AutostartServiceProvider extends GObject.Object {
+    {GTypeName: `AWSM_AutostartServiceProvider_${GLib.uuid_string_random().replace(/-/g, '')}`}, class AutostartServiceProvider extends GObject.Object {
 
         _init() {
             super._init();
@@ -88,7 +88,7 @@ export const AutostartServiceProvider = GObject.registerClass(
     });
 
 const AutostartService = GObject.registerClass(
-    class AutostartService extends GObject.Object {
+    {GTypeName: `AWSM_AutostartService_${GLib.uuid_string_random().replace(/-/g, '')}`}, class AutostartService extends GObject.Object {
 
         _init() {
             super._init();
@@ -220,7 +220,7 @@ const AutostartService = GObject.registerClass(
 
 // Based on endSessionDialog in Gnome shell
 const AutostartDialog = GObject.registerClass(
-    class AutostartDialog extends ModalDialog.ModalDialog {
+    {GTypeName: `AWSM_AutostartDialog_${GLib.uuid_string_random().replace(/-/g, '')}`}, class AutostartDialog extends ModalDialog.ModalDialog {
 
         _init() {
             super._init({

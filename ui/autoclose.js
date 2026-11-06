@@ -60,7 +60,7 @@ const State = {
 };
 
 export const Autoclose = GObject.registerClass(
-    class Autoclose extends GObject.Object {
+    {GTypeName: `AWSM_Autoclose_${GLib.uuid_string_random().replace(/-/g, '')}`}, class Autoclose extends GObject.Object {
         _init() {
 
             this._log = new Log.Log();
@@ -250,7 +250,7 @@ export const Autoclose = GObject.registerClass(
 
 
 // Based on dialog.js of gnome-shell
-const RunningApplicationListWindow = GObject.registerClass({
+const RunningApplicationListWindow = GObject.registerClass({GTypeName: `AWSM_RunningApplicationListWindow_${GLib.uuid_string_random().replace(/-/g, '')}`, 
     Signals: { 'opened': {}, 'closed': {} }
 },
     class RunningApplicationListWindow extends St.BoxLayout {

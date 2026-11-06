@@ -28,7 +28,7 @@ import * as MetaWindowUtils from './utils/metaWindowUtils.js';
 
 
 export const AwsIndicator = GObject.registerClass(
-class AwsIndicator extends PanelMenu.Button {
+{GTypeName: `AWSM_AwsIndicator_${GLib.uuid_string_random().replace(/-/g, '')}`}, class AwsIndicator extends PanelMenu.Button {
 
     _init() {
         super._init(0.0, "Another Window Session Manager");

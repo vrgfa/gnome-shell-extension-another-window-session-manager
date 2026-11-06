@@ -1,11 +1,12 @@
 'use strict';
+import GLib from 'gi://GLib';
 
 import GObject from 'gi://GObject';
 
 import * as CloseWindowsRule from './closeWindowsRule.js';
 
 
-export const CloseWindowsWhitelist = GObject.registerClass({
+export const CloseWindowsWhitelist = GObject.registerClass({GTypeName: `AWSM_CloseWindowsWhitelist_${GLib.uuid_string_random().replace(/-/g, '')}`, 
 }, class CloseWindowsWhitelist extends GObject.Object {
     id; // int. just like the id in MySQL. Used to update or delete rows.
     name; // string. Can be any string
@@ -56,7 +57,7 @@ export const CloseWindowsRuleByApp = class extends CloseWindowsRuleBase {
 * See: https://gitlab.gnome.org/GNOME/gtk/blob/d726ecdb5d1ece870585c7be89eb6355b2482544/gdk/gdkenums.h:L73
 * See: https://gitlab.gnome.org/GNOME/gtk/blob/1ce79b29e363e585872901424d3b72041b55e3e4/gtk/gtkeventcontrollerkey.c:L203
 */
-export const GdkShortcuts = GObject.registerClass({
+export const GdkShortcuts = GObject.registerClass({GTypeName: `AWSM_GdkShortcuts_${GLib.uuid_string_random().replace(/-/g, '')}`, 
 }, class GdkShortcuts extends GObject.Object{
     /**
      * For example: Ctrl+Q
