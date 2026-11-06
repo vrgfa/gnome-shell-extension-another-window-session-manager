@@ -38,6 +38,8 @@ export const SaveSession = class {
         this._settings = PrefsUtils.getSettings();
 
         this._sourceIds = [];
+        // file path -> promise of the last write queued for it
+        this._writeChains = new Map();
     }
 
     async saveSummaryAsync(cancellable) {
@@ -156,7 +158,7 @@ export const SaveSession = class {
     
             this._log.debug(`Generating window session ${sessionName}`);
             
-            const _getProcessInfoPromise = this._getProcessInfo([app])
+            const _getProcessInfoPromise = SubprocessUtils.getProcessInfo([app])
             
             const [canContinue, sessionConfigObject] = this._builtSessionDetails(
                 app, 
@@ -416,7 +418,23 @@ export const SaveSession = class {
         }
     }
 
+    // Writes to one file run one after the other, in the order they were requested,
+    // so an older write can never finish after (and overwrite) a newer one.
     _saveSessionConfigAsync(sessionConfig, baseDir = null, cancellable = null) {
+        const path = GLib.build_filenamev([FileUtils.get_sessions_path(baseDir), sessionConfig.session_name]);
+        const previous = this._writeChains.get(path);
+        const write = previous
+            ? previous.catch(() => {}).then(() => this._writeSessionConfigAsync(sessionConfig, baseDir, cancellable))
+            : this._writeSessionConfigAsync(sessionConfig, baseDir, cancellable);
+        this._writeChains.set(path, write);
+        const cleanUp = () => {
+            if (this._writeChains?.get(path) === write) this._writeChains.delete(path);
+        };
+        write.then(cleanUp, cleanUp);
+        return write;
+    }
+
+    _writeSessionConfigAsync(sessionConfig, baseDir = null, cancellable = null) {
         if (cancellable && cancellable.is_cancelled()) {
             return Promise.resolve(false);
         }
@@ -514,6 +532,7 @@ export const SaveSession = class {
             GLib.Source.remove(this._saveSessionIdleId);
             this._saveSessionIdleId = null;
         }
+        this._writeChains = null;
         
     }
 

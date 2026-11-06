@@ -22,6 +22,7 @@ import * as MetaWindowUtils from './utils/metaWindowUtils.js';
 import * as Function from './utils/function.js';
 
 import {WindowTilingSupport} from './windowTilingSupport.js';
+import {WindowQueue} from './utils/windowQueue.js';
 
 
 let _meta_restart = null;
@@ -118,10 +119,15 @@ export const OpenWindowsTracker = class {
         });
         this._signals.push([x11DisplayOpenedId, this._display]);
 
+        // The window-created hook only queues the window; the windows mapping and
+        // the session-saving signals are handled by an idle drain (utils/windowQueue.js).
+        this._windowQueue = new WindowQueue(
+            (window, batch) => this._processQueuedWindow(window, batch),
+            batch => this._commitWindowsMapping(batch));
         const windowCreatedId = this._display.connect('window-created', (display, window, userData) => {
-            this._onWindowCreatedSaveOrUpdateWindowsMapping(display, window, userData);
-
-            this._restoreOrSaveWindowSession(window);
+            // Restoring needs the state right now (startup: installed-changed moves the windows)
+            this._restoreWindowStateSafe(window);
+            this._windowQueue.push(window);
         });
         this._signals.push([windowCreatedId, this._display]);
 
@@ -238,15 +244,34 @@ export const OpenWindowsTracker = class {
         }
     }
 
-    async _restoreOrSaveWindowSession(window) {
+    _restoreWindowStateSafe(window) {
         try {
             this._restoreWindowState(window);
+        } catch (e) {
+            this._log.error(e);
+        }
+    }
 
+    // Idle drain: one queued window. `batch` is shared by the windows of one idle turn.
+    _processQueuedWindow(window, batch) {
+        try {
+            this._updateWindowsMapping(batch, window);
+        } catch (e) {
+            this._log.error(e);
+        }
+        try {
             this._prepareToSaveWindowSession(window);
             this._connectWindowSignalsToSaveSession(window);
         } catch (e) {
             this._log.error(e);
         }
+    }
+
+    // One settings write (+ sync) for all windows processed in an idle turn
+    _commitWindowsMapping(batch) {
+        if (!batch.mapping || !batch.changed) return;
+        this._settings.set_string('windows-mapping', JSON.stringify(Array.from(batch.mapping.entries())));
+        Gio.Settings.sync();
     }
 
     _connectWindowSignalsToSaveSession(window) {
@@ -487,6 +512,7 @@ export const OpenWindowsTracker = class {
 
     _onConfirmedLogout(proxy, sender) {
         try {
+            this._windowQueue?.flush();
             this._log.debug(`Resetting windows-mapping before logout.`);
             this._settings.set_string('windows-mapping', '{}');
         } catch (error) {
@@ -495,18 +521,20 @@ export const OpenWindowsTracker = class {
     }
 
     _onConfirmedReboot(proxy, sender) {
+        this._windowQueue?.flush();
         this._log.debug(`Resetting windows-mapping before reboot.`);
         this._settings.set_string('windows-mapping', '{}');
     }
 
     _onConfirmedShutdown(proxy, sender) {
+        this._windowQueue?.flush();
         this._log.debug(`Resetting windows-mapping before shutdown.`);
         this._settings.set_string('windows-mapping', '{}');
 
         // TODO Move currentSession to recentlyClosed (recent closed session / recent closed app) with three tabs?
     }
 
-    _onWindowCreatedSaveOrUpdateWindowsMapping(display, metaWindow, userData) {
+    _updateWindowsMapping(batch, metaWindow) {
         const shellApp = this._windowTracker.get_window_app(metaWindow);
         if (!shellApp) {
             return;
@@ -524,13 +552,13 @@ export const OpenWindowsTracker = class {
 
         const xid = metaWindow.get_description();
         const windowStableSequence = metaWindow.get_stable_sequence();
-        const savedWindowsMappingJsonStr = this._settings.get_string('windows-mapping');
-        let savedWindowsMapping;
-        if (savedWindowsMappingJsonStr === '{}') {
-            savedWindowsMapping = new Map();
-        } else {
-            savedWindowsMapping = new Map(JSON.parse(savedWindowsMappingJsonStr));
+        if (!batch.mapping) {
+            const savedWindowsMappingJsonStr = this._settings.get_string('windows-mapping');
+            batch.mapping = savedWindowsMappingJsonStr === '{}' ? new Map() : new Map(JSON.parse(savedWindowsMappingJsonStr));
         }
+        const savedWindowsMapping = batch.mapping;
+        // The original wrote the setting after every window, even when nothing changed
+        batch.changed = true;
         let xidObj = savedWindowsMapping.get(key);
         if (xidObj) {
             const windows = shellApp.get_windows();
@@ -548,9 +576,7 @@ export const OpenWindowsTracker = class {
                 };
             }
         } else {
-            if (!xidObj) {
-                xidObj = {};
-            }
+            xidObj = {};
             xidObj[xid] = {
                 windowTitle: metaWindow.get_title(),
                 xid: xid,
@@ -558,11 +584,6 @@ export const OpenWindowsTracker = class {
             };
             savedWindowsMapping.set(key, xidObj);
         }
-
-        const newSavedWindowsMappingJsonStr = JSON.stringify(Array.from(savedWindowsMapping.entries()));
-        this._settings.set_string('windows-mapping', newSavedWindowsMappingJsonStr);
-        Gio.Settings.sync();
-
     }
 
     _cancelRunningSave(window) {
@@ -590,6 +611,16 @@ export const OpenWindowsTracker = class {
     }
 
     destroy() {
+        // Queued windows still get their mapping written (flush), then nothing is left scheduled
+        if (this._windowQueue) {
+            try {
+                this._windowQueue.flush();
+            } catch (e) {
+                this._log.error(e);
+            }
+            this._windowQueue.destroy();
+            this._windowQueue = null;
+        }
         this._cancelAllRunningSave();
 
         if (this._busWatchId) {
