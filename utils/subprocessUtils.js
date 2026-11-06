@@ -124,6 +124,7 @@ async function _readProcessInfo(pid, statText, sys) {
 
 // The former implementation, only used when /proc can't give the system info (btime / MemTotal):
 // the saved `cmd` must never be lost. Asynchronous (communicate_utf8_async), same array layout.
+let _psRetryAfter = 0;
 function _getProcessInfoViaPs(pids) {
     return new Promise(resolve => {
         const map = new Map();
@@ -200,7 +201,11 @@ export async function getProcessInfo(apps /*ShellApp*/, ignoreWindowsCb) {
                 _sysInfoErrorLogged = true;
                 Log.Log.getDefault().error(new Error('Cannot read btime / MemTotal from /proc, falling back to `ps` for process info'));
             }
-            const viaPs = await _getProcessInfoViaPs(missing.map(([pid]) => pid));
+            // ps failing too: retry it at most once a minute (no spawn + error per window save)
+            const now = GLib.get_monotonic_time();
+            const viaPs = now < _psRetryAfter ? new Map() : await _getProcessInfoViaPs(missing.map(([pid]) => pid));
+            if (!viaPs.size && now >= _psRetryAfter)
+                _psRetryAfter = now + 60 * GLib.USEC_PER_SEC;
             for (const [pid, startTime] of missing) {
                 const processInfoArray = viaPs.get(pid);
                 if (!processInfoArray) continue;

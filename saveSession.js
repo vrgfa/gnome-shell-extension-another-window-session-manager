@@ -532,10 +532,9 @@ export const SaveSession = class {
             });
             this._sourceIds = null;
         }
-        if (this._saveSessionIdleId) {
-            GLib.Source.remove(this._saveSessionIdleId);
-            this._saveSessionIdleId = null;
-        }
+        // A queued session write (idle) is NOT removed: dropping it would lose that save and leave its promise
+        // unsettled (writes chained behind it would never run). Its callback needs nothing destroy() clears.
+        this._saveSessionIdleId = null;
         this._writeChains = null;
         
     }
